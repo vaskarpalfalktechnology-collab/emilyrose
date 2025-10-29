@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>🎙 Talk to Emily Rose</title>
+</head>
+<body>
+  <h2>💬 Talk to Emily Rose</h2>
+
+  <button id="startBtn">▶️ Start Conversation</button>
+  <button id="stopBtn" disabled>⏹️ End Conversation</button>
+  <p id="status">Click "Start" to begin chatting with Emily...</p>
+
+  <audio id="emilyAudio" controls autoplay></audio>
+
+  <script>
+    let recognition;
+    let isListening = false;
+
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusText = document.getElementById("status");
+    const audioPlayer = document.getElementById("emilyAudio");
+
+    function initRecognition() {
+      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'en-GB';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript;
+        statusText.innerText = `🗨️ You: "${transcript}"`;
+
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: transcript })
+        });
+
+        const data = await res.json();
+        statusText.innerText = `💖 Emily: ${data.reply}`;
+        audioPlayer.src = data.audio_url + `?t=${Date.now()}`;
+
+        // After Emily finishes speaking, start listening again
+        audioPlayer.onended = () => {
+          if (isListening) {
+            recognition.start();
+            statusText.innerText = "🎧 Listening...";
+          }
+        };
+      };
+
+      recognition.onerror = (event) => {
+        statusText.innerText = "⚠️ Mic Error: " + event.error;
+      };
+      recognition.onend = () => {
+        if (isListening) {
+          recognition.start();
+          statusText.innerText = "🎧 Listening...";
+        }
+      };
+
+    }
+
+    startBtn.onclick = () => {
+      if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+        alert("❌ Your browser doesn't support Web Speech API.");
+        return;
+      }
+
+      isListening = true;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      initRecognition(); // initialize fresh recognition
+      recognition.start();
+      statusText.innerText = "🎧 Listening...";
+    };
+
+    stopBtn.onclick = () => {
+      isListening = false;
+      if (recognition) recognition.stop();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      statusText.innerText = "👋 Conversation ended.";
+    };
+  </script>
+
+</body>
+</html>
