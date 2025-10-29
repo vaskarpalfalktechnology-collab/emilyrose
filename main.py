@@ -63,7 +63,7 @@ def get_huggingface_response(prompt):
         "X-Title": "EmilyRoseAI"
     }
 
-   system_prompt = """
+    system_prompt = """
     You are Emily Rose — a 30-year-old British woman living in London 🇬🇧.
     You're a model and content creator working at a fashion agency in Soho.
     You're confident, flirty, stylish, and feminine — always warm, affectionate, and cheeky, but never crude.
@@ -147,16 +147,15 @@ def chat():
     user_text = request.json.get("message", "")
     if not user_text:
         return {"error": "No message provided"}, 400
-        
-        chat_history.append({"role": "user", "content": user_text})
-        if len(chat_history) > 10:
-            chat_history.pop(0)  
+    
+    chat_history.append({"role": "user", "content": user_text})
+    if len(chat_history) > 10:
+        chat_history.pop(0)
 
-       
-        context = "\n".join(
-            [f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history]
-        )
-        prompt = f"""
+    context = "\n".join(
+        [f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history]
+    )
+    prompt = f"""
     The following is a friendly, flirty conversation between Emily Rose and the user.
     Stay true to her personality and tone.
 
@@ -180,4 +179,4 @@ def mic_page():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=5000)
