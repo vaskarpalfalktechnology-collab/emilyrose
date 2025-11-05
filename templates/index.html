@@ -15,11 +15,14 @@
   <script>
     let recognition;
     let isListening = false;
+    let isSpeaking = false;
 
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const statusText = document.getElementById("status");
     const audioPlayer = document.getElementById("emilyAudio");
+
+    const emilyIntro = `Hey, it’s Emily. How are you. It’s great to finally chat. How’s your day going ?`;
 
     function initRecognition() {
       recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -28,38 +31,82 @@
       recognition.interimResults = false;
 
       recognition.onresult = async (event) => {
+        recognition.stop();
+        isListening = false;
+
         const transcript = event.results[0][0].transcript;
         statusText.innerText = `🗨️ You: "${transcript}"`;
 
-        const res = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: transcript })
-        });
+        isSpeaking = true;
+        statusText.innerText = "🤖 Emily is thinking...";
 
-        const data = await res.json();
-        statusText.innerText = `💖 Emily: ${data.reply}`;
-        audioPlayer.src = data.audio_url + `?t=${Date.now()}`;
+        try {
+          const res = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: transcript })
+          });
 
-        // After Emily finishes speaking, start listening again
-        audioPlayer.onended = () => {
-          if (isListening) {
-            recognition.start();
-            statusText.innerText = "🎧 Listening...";
-          }
-        };
+          const data = await res.json();
+          statusText.innerText = `💖 Emily: ${data.reply}`;
+          audioPlayer.src = data.audio_url + `?t=${Date.now()}`;
+          audioPlayer.play();
+
+          audioPlayer.onended = () => {
+            isSpeaking = false;
+            if (startBtn.disabled) {
+              recognition.start();
+              isListening = true;
+              statusText.innerText = "🎧 Listening...";
+            }
+          };
+        } catch (err) {
+          statusText.innerText = "⚠️ Error: " + err.message;
+          isSpeaking = false;
+        }
       };
 
       recognition.onerror = (event) => {
-        statusText.innerText = "⚠️ Mic Error: " + event.error;
+        if (event.error !== "no-speech") {
+          statusText.innerText = "⚠️ Mic Error: " + event.error;
+        }
       };
+
       recognition.onend = () => {
-        if (isListening) {
+        if (isListening && !isSpeaking) {
           recognition.start();
           statusText.innerText = "🎧 Listening...";
         }
       };
+    }
 
+    async function playEmilyIntro() {
+      isSpeaking = true;
+      statusText.innerText = "💖 Emily: Starting conversation...";
+
+      try {
+        // Ask the backend to just generate audio (not full chat)
+        const res = await fetch("/generate-voice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: emilyIntro })
+        });
+
+        const data = await res.json();
+        statusText.innerText = `💖 Emily: ${emilyIntro}`;
+        audioPlayer.src = data.audio_url + `?t=${Date.now()}`;
+        audioPlayer.play();
+
+        audioPlayer.onended = () => {
+          isSpeaking = false;
+          recognition.start();
+          isListening = true;
+          statusText.innerText = "🎧 Listening...";
+        };
+      } catch (err) {
+        statusText.innerText = "⚠️ Error: " + err.message;
+        isSpeaking = false;
+      }
     }
 
     startBtn.onclick = () => {
@@ -68,17 +115,19 @@
         return;
       }
 
-      isListening = true;
       startBtn.disabled = true;
       stopBtn.disabled = false;
-      initRecognition(); // initialize fresh recognition
-      recognition.start();
-      statusText.innerText = "🎧 Listening...";
+
+      initRecognition();
+      isListening = false; // wait for intro first
+      playEmilyIntro(); // play intro only
     };
 
     stopBtn.onclick = () => {
       isListening = false;
+      isSpeaking = false;
       if (recognition) recognition.stop();
+
       startBtn.disabled = false;
       stopBtn.disabled = true;
       statusText.innerText = "👋 Conversation ended.";

@@ -4,6 +4,9 @@ import os
 import time
 
 app = Flask(__name__)
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # Load environment variables from Replit Secrets
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_TOKEN")
@@ -59,7 +62,7 @@ def get_huggingface_response(prompt):
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://replit.com/",  # required
+        "HTTP-Referer": "https://replit.com/",  
         "X-Title": "EmilyRoseAI"
     }
 
@@ -173,9 +176,22 @@ def chat():
     return {"reply": emily_reply, "audio_url": audio_url}
 
 
+@app.route("/generate-voice", methods=["POST"])
+def generate_voice_only():
+    text = request.json.get("text", "")
+    if not text:
+        return {"error": "No text provided"}, 400
+
+    audio_url = generate_voice(text)
+    return {"audio_url": audio_url}
+
+
+
 @app.route("/mic", methods=["GET"])
 def mic_page():
     return render_template("index.html")
+
+
 
 
 if __name__ == "__main__":
