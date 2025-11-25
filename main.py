@@ -237,7 +237,7 @@ def chat():
     if not user_text:
         return {"error": "No message provided"}, 400
 
- phone = request.json.get("phone", "webchat") 
+    phone = request.json.get("phone", "webchat") 
 
     # --- Detect name ---
     detected_name = None
