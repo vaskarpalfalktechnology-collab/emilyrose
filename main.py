@@ -237,7 +237,7 @@ def chat():
     if not user_text:
         return {"error": "No message provided"}, 400
 
-    phone = "webchat"   # ID for browser chat
+ phone = request.json.get("phone", "webchat") 
 
     # --- Detect name ---
     detected_name = None
@@ -306,8 +306,10 @@ def generate_voice_only():
 
 @app.route("/get-username", methods=["GET"])
 def get_username():
-    phone = "webchat"
-    history = load_history(phone)[-10:] 
+    phone = request.args.get("phone", "webchat")
+
+      
+    history = load_history(phone)[-20:] 
 
     user_name = None
     for role, msg in history:
