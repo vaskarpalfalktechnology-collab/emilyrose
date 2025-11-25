@@ -23,7 +23,7 @@
     const audioPlayer = document.getElementById("emilyAudio");
 
     const emilyIntro = `Hey, it’s Emily. How are you. It’s great to finally chat. How’s your day going ?`;
-
+    let emilyHasSpokenIntro = false;
     function initRecognition() {
       recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
       recognition.lang = 'en-GB';
@@ -80,20 +80,35 @@
       };
     }
 
+        let userName = null;
+
+    async function fetchUserName() {
+      try {
+        const res = await fetch("/get-username"); // we'll create this route
+        const data = await res.json();
+        if (data.name) userName = data.name;
+      } catch (err) {
+        console.warn("Could not fetch username:", err);
+      }
+    }
+    
     async function playEmilyIntro() {
+            let text = "Hey, it’s Emily. How are you? It’s great to finally chat.";
+      if (userName) text = `Hey ${userName}, it’s Emily. How are you? It’s great to finally chat.`;
+      
       isSpeaking = true;
-      statusText.innerText = "💖 Emily: Starting conversation...";
+      statusText.innerText = `💖 Emily: ${text}`;
 
       try {
         // Ask the backend to just generate audio (not full chat)
         const res = await fetch("/generate-voice", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: emilyIntro })
+          body: JSON.stringify({ text })
         });
 
         const data = await res.json();
-        statusText.innerText = `💖 Emily: ${emilyIntro}`;
+   
         audioPlayer.src = data.audio_url + `?t=${Date.now()}`;
         audioPlayer.play();
 
@@ -102,6 +117,7 @@
           recognition.start();
           isListening = true;
           statusText.innerText = "🎧 Listening...";
+          emilyHasSpokenIntro = true; 
         };
       } catch (err) {
         statusText.innerText = "⚠️ Error: " + err.message;
@@ -109,7 +125,7 @@
       }
     }
 
-    startBtn.onclick = () => {
+    startBtn.onclick = async () => {
       if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
         alert("❌ Your browser doesn't support Web Speech API.");
         return;
@@ -117,7 +133,7 @@
 
       startBtn.disabled = true;
       stopBtn.disabled = false;
-
+      await fetchUserName();
       initRecognition();
       isListening = false; // wait for intro first
       playEmilyIntro(); // play intro only
