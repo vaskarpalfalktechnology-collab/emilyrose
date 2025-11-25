@@ -55,6 +55,21 @@ def index():
     return "💬 Emily Rose AI Companion is running."
 
 
+@app.route("/incoming-call", methods=["POST"])
+def incoming_call():
+    response = """
+    <Response>
+        <Gather input="speech" action="/voice" language="en-GB">
+            <Say>Hey love, it’s Emily. Talk to me.</Say>
+        </Gather>
+    </Response>
+    """
+    return Response(response, mimetype="text/xml")
+
+
+
+
+
 @app.route("/voice", methods=["POST"])
 def voice():
     # 1️⃣ Capture caller ID (Twilio passes "From")
