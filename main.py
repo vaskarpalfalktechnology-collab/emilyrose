@@ -2,6 +2,41 @@ from flask import Flask, request, Response, render_template
 import requests
 import os
 import time
+import psycopg2
+from psycopg2 import pool
+
+db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, os.getenv("DATABASE_URL"))
+def get_db():
+    return db_pool.getconn()
+
+
+def release_db(conn):
+    db_pool.putconn(conn)
+    
+def save_message(phone, role, message):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO call_history (phone_number, role, message) VALUES (%s, %s, %s)",
+        (phone, role, message)
+    )
+    conn.commit()
+    cur.close()
+    release_db(conn)
+
+def load_history(phone):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT role, message FROM call_history WHERE phone_number=%s ORDER BY id ASC",
+        (phone,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    release_db(conn)
+    return rows
+
+
 
 app = Flask(__name__)
 from dotenv import load_dotenv
@@ -22,22 +57,57 @@ def index():
 
 @app.route("/voice", methods=["POST"])
 def voice():
+    # 1️⃣ Capture caller ID (Twilio passes "From")
+    phone = request.values.get("From", "unknown")
+
+    # 2️⃣ Get speech text
     user_text = request.values.get("SpeechResult", "")
     if not user_text:
         return Response(
             "<Response><Say>I didn’t catch that. Can you say it again?</Say></Response>",
-            mimetype="text/xml")
+            mimetype="text/xml"
+        )
 
-    prompt = f"You are Emily Rose, a charming, flirty woman. The user said: '{user_text}'. Respond with warmth and tease subtly."
+    # 3️⃣ Save user message
+    save_message(phone, "user", user_text)
+
+    # 4️⃣ Load previous conversation
+    history = load_history(phone)[-10:]
+
+    conversation_text = ""
+    for role, msg in history:
+        conversation_text += f"{role}: {msg}\n"
+
+    # 5️⃣ Build prompt **with full memory**
+    prompt = f"""
+The following is an ongoing conversation between Emily Rose and a caller.
+
+Conversation so far:
+{conversation_text}
+
+Caller just said: "{user_text}"
+
+Now respond as Emily Rose in a warm, flirty British tone.
+"""
+
+
     emily_reply = get_huggingface_response(prompt)
+
+
+    save_message(phone, "assistant", emily_reply)
+
+
     audio_url = generate_voice(emily_reply)
+
 
     response = f"""
     <Response>
         <Play>{audio_url}</Play>
+        <Gather input="speech" action="/voice" language="en-GB"/>
     </Response>
     """
     return Response(response, mimetype="text/xml")
+
 
 
 @app.route("/test", methods=["GET"])
@@ -62,7 +132,7 @@ def get_huggingface_response(prompt):
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://replit.com/",  
+        "HTTP-Referer": "https://emilyrose.onrender.com",  
         "X-Title": "EmilyRoseAI"
     }
 
@@ -87,7 +157,7 @@ def get_huggingface_response(prompt):
 
     data = {
         "model":
-        "google/gemma-2-2b-it",
+        "deepseek-ai/DeepSeek-V3.2-Exp",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
@@ -95,7 +165,7 @@ def get_huggingface_response(prompt):
         "temperature":
         0.2,
         "max_tokens":
-        400
+        150
     }
 
     try:
@@ -145,31 +215,64 @@ def generate_voice(text):
     return f"{request.url_root}{filename}"
 
 chat_history = []
+
 @app.route("/chat", methods=["POST"])
 def chat():
     user_text = request.json.get("message", "")
     if not user_text:
         return {"error": "No message provided"}, 400
-    
-    chat_history.append({"role": "user", "content": user_text})
-    if len(chat_history) > 10:
-        chat_history.pop(0)
 
-    context = "\n".join(
-        [f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history]
-    )
+    phone = "webchat"   # ID for browser chat
+
+    # --- Detect name ---
+    detected_name = None
+    if "my name is" in user_text.lower():
+        detected_name = user_text.split("my name is", 1)[1].strip().split(" ")[0]
+    elif "i am" in user_text.lower():
+        detected_name = user_text.split("i am", 1)[1].strip().split(" ")[0]
+
+    if detected_name:
+        save_message(phone, "name", detected_name)
+
+    # Save user message
+    save_message(phone, "user", user_text)
+
+    # Load history
+    history = load_history(phone)[-10:] 
+
+    # Try to find name from DB history
+    user_name = None
+    for role, msg in history:
+        if role == "name":
+            user_name = msg
+
+    # Build conversation text
+    context = ""
+    for role, msg in history:
+        if role != "name":
+            context += f"{role}: {msg}\n"
+
+    # Add name to Emily’s personality if known
+    if user_name:
+        name_memory = f"Call the user by their name: {user_name}.\n"
+    else:
+        name_memory = ""
+
     prompt = f"""
-    The following is a friendly, flirty conversation between Emily Rose and the user.
-    Stay true to her personality and tone.
+    {name_memory}
+    The following is a conversation between Emily and the user.
 
     Conversation so far:
     {context}
 
-    Now, Emily responds next:
+    User now says: "{user_text}"
+
+    Respond naturally.
     """
 
     emily_reply = get_huggingface_response(prompt)
-    chat_history.append({"role": "assistant", "content": emily_reply})
+
+    save_message(phone, "assistant", emily_reply)
 
     audio_url = generate_voice(emily_reply)
 
@@ -184,6 +287,20 @@ def generate_voice_only():
 
     audio_url = generate_voice(text)
     return {"audio_url": audio_url}
+
+
+@app.route("/get-username", methods=["GET"])
+def get_username():
+    phone = "webchat"
+    history = load_history(phone)[-10:] 
+
+    user_name = None
+    for role, msg in history:
+        if role == "name":
+            user_name = msg
+            break
+
+    return {"name": user_name}
 
 
 
