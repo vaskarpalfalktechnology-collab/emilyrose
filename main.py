@@ -154,11 +154,14 @@ def voice():
     if not user_text:
         return Response("<Response><Say>I didn't catch that. Try again.</Say></Response>", mimetype="text/xml")
 
+        # Load last 8 lines
+    history = load_history(phone)
 
-        # Try to get saved name
+
+    # Check if name already saved
     user_name = next((msg for role, msg in history if role == "name"), None)
 
-    # --- Detect name explicitly only ---
+    # Detect name in this speech if not saved
     if not user_name:
         detected_name = None
         lower_text = user_text.lower()
@@ -171,27 +174,19 @@ def voice():
             save_message(phone, "name", detected_name)
             user_name = detected_name
 
-    
-
+    # Save user's message
     save_message(phone, "user", user_text)
 
-    # Load last 8 lines
-    history = load_history(phone)[-8:]
-    conversation = "\n".join([f"{role}: {msg}" for role, msg in history if role != "name"])
+    # Load conversation for AI prompt
+    conversation = "\n".join([f"{role}: {msg}" for role, msg in load_history(phone)[-8:] if role != "name"])
 
-    # AI reply
-    prompt = f"""
-    Conversation so far:
-    {conversation}
+    # Build prompt for AI
+    prompt = f"Conversation so far:\n{conversation}\n\nUser just said: \"{user_text}\"\nGive a short, warm, playful answer."
 
-    User just said: "{user_text}"
-
-    Give a short, warm, playful answer as Emily Rose.
-    Keep it under 2 sentences.
-    """
-    
+    # Add name context
     if user_name:
         prompt = f"Call the user by their name: {user_name}.\n" + prompt
+
         
     reply = get_huggingface_response(prompt)
     save_message(phone, "assistant", reply)
