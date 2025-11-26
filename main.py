@@ -129,8 +129,8 @@ def stream_tts():
             "stability": 0.3,
             "similarity_boost": 0.85
         },
-        "model_id": "eleven_turbo_v2_5",
-        "optimize_streaming_latency": 4,
+        "model_id": "eleven_flash_v2_5",
+        "optimize_streaming_latency": 0,
         "text_type": "ssml",
     }
 
@@ -138,7 +138,7 @@ def stream_tts():
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream"
         with requests.post(url, json=payload, headers=headers, stream=True) as r:
             r.raise_for_status()
-            for chunk in r.iter_content(chunk_size=4096):
+            for chunk in r.iter_content(chunk_size=1024):
                 if chunk:
                     yield chunk
 
@@ -318,8 +318,8 @@ def generate_voice(text):
             "stability": 0.3,
             "similarity_boost": 0.85
         },
-        "model_id": "eleven_turbo_v2_5",
-        "optimize_streaming_latency": 4,
+        "model_id": "eleven_flash_v2_5",
+        "optimize_streaming_latency": 0,
         "text_type": "ssml",
     }
 
@@ -336,7 +336,7 @@ def generate_voice(text):
     os.makedirs("static/audio", exist_ok=True)
     filepath = f"static/audio/{filename}"
     with open(filepath, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
+        for chunk in response.iter_content(chunk_size=1024):
             f.write(chunk)
 
     return f"{request.url_root}static/audio/{filename}"
