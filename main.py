@@ -154,54 +154,51 @@ def voice():
     if not user_text:
         return Response("<Response><Say>I didn't catch that. Try again.</Say></Response>", mimetype="text/xml")
 
-        # Load last 8 lines
-    history = load_history(phone)
 
+    
+    # --- Detect name ---
+    detected_name = None
+    if "my name is" in user_text.lower():
+        detected_name = user_text.split("my name is", 1)[1].strip().split(" ")[0]
+    elif "i am" in user_text.lower():
+        detected_name = user_text.split("i am", 1)[1].strip().split(" ")[0]
 
-    # Check if name already saved
-    user_name = next((msg for role, msg in history if role == "name"), None)
+    if detected_name:
+        save_message(phone, "name", detected_name)
 
-    # Detect name in this speech if not saved
-    if not user_name:
-        detected_name = None
-        lower_text = user_text.lower()
-        if "my name is" in lower_text:
-            detected_name = user_text.split("my name is", 1)[1].strip().split(" ")[0]
-        elif "i am" in lower_text:
-            detected_name = user_text.split("i am", 1)[1].strip().split(" ")[0]
+    
 
-        if detected_name:
-            save_message(phone, "name", detected_name)
-            user_name = detected_name
-
-    # Save user's message
     save_message(phone, "user", user_text)
 
-    # Load conversation for AI prompt
-    conversation = "\n".join([f"{role}: {msg}" for role, msg in load_history(phone)[-8:] if role != "name"])
+    # Load last 8 lines instead of 10 (faster)
+    history = load_history(phone)[-8:]
 
-    # Build prompt for AI
-    prompt = f"Conversation so far:\n{conversation}\n\nUser just said: \"{user_text}\"\nGive a short, warm, playful answer."
+    conversation = "\n".join([f"{r}: {m}" for r, m in history])
 
-    # Add name context
-    if user_name:
-        prompt = f"Call the user by their name: {user_name}.\n" + prompt
+    prompt = f"""
+    Conversation so far:
+    {conversation}
 
-        
+    User just said: "{user_text}"
+
+    Give a short, warm, playful answer as Emily Rose.
+    Keep it under 2 sentences.
+    """
+
     reply = get_huggingface_response(prompt)
     save_message(phone, "assistant", reply)
 
-    # ✅ Use streaming TTS (NO file save)
-    play_url = f"{request.url_root.rstrip('/')}/stream-tts?text={quote(reply)}"
+    # Faster ElevenLabs streaming
+    audio_url = generate_voice(reply)
 
-    xml = f"""
+    response = f"""
     <Response>
-        <Play>{play_url}</Play>
-        <Gather input="speech" action="/voice" language="en-GB"/>
+        <Play>{audio_url}</Play>
+        <Gather input="speech" action="/voice" language="en-GB" />
     </Response>
     """
 
-    return Response(xml, mimetype="text/xml")
+    return Response(response, mimetype="text/xml")
 
 
 
