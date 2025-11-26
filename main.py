@@ -115,8 +115,10 @@ def stream_tts():
 
     ssml_text = f"""
     <speak>
-        <prosody rate="medium" pitch="+5%">
-            {text}
+          <prosody rate="medium" pitch="+5%">
+            {text.replace('.', '. <break time="0.5s"/>')
+                 .replace('?', '? <break time="0.6s"/>')
+                 .replace('!', '! <break time="0.5s"/>')}
         </prosody>
     </speak>
     """
