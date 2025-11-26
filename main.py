@@ -91,56 +91,44 @@ def incoming_call():
 
 @app.route("/voice", methods=["POST"])
 def voice():
-    # 1️⃣ Capture caller ID (Twilio passes "From")
     phone = request.values.get("From", "unknown")
-
-    # 2️⃣ Get speech text
     user_text = request.values.get("SpeechResult", "")
-    if not user_text:
-        return Response(
-            "<Response><Say>I didn’t catch that. Can you say it again?</Say></Response>",
-            mimetype="text/xml"
-        )
 
-    # 3️⃣ Save user message
+    if not user_text:
+        return Response("<Response><Say>I didn't catch that. Try again.</Say></Response>", mimetype="text/xml")
+
     save_message(phone, "user", user_text)
 
-    # 4️⃣ Load previous conversation
-    history = load_history(phone)[-10:]
+    # Load last 8 lines instead of 10 (faster)
+    history = load_history(phone)[-8:]
 
-    conversation_text = ""
-    for role, msg in history:
-        conversation_text += f"{role}: {msg}\n"
+    conversation = "\n".join([f"{r}: {m}" for r, m in history])
 
-    # 5️⃣ Build prompt **with full memory**
     prompt = f"""
-The following is an ongoing conversation between Emily Rose and a caller.
+    Conversation so far:
+    {conversation}
 
-Conversation so far:
-{conversation_text}
+    User just said: "{user_text}"
 
-Caller just said: "{user_text}"
+    Give a short, warm, playful answer as Emily Rose.
+    Keep it under 2 sentences.
+    """
 
-Now respond as Emily Rose in a warm, flirty British tone.
-"""
+    reply = get_huggingface_response(prompt)
+    save_message(phone, "assistant", reply)
 
-
-    emily_reply = get_huggingface_response(prompt)
-
-
-    save_message(phone, "assistant", emily_reply)
-
-
-    audio_url = generate_voice(emily_reply)
-
+    # Faster ElevenLabs streaming
+    audio_url = generate_voice(reply)
 
     response = f"""
     <Response>
         <Play>{audio_url}</Play>
-        <Gather input="speech" action="/voice" language="en-GB"/>
+        <Gather input="speech" action="/voice" language="en-GB" />
     </Response>
     """
+
     return Response(response, mimetype="text/xml")
+
 
 
 
@@ -199,7 +187,9 @@ def get_huggingface_response(prompt):
         "temperature":
         0.2,
         "max_tokens":
-        150
+        80,
+        "top_p": 0.9,
+        "frequency_penalty": 0.2
     }
 
     try:
@@ -231,13 +221,13 @@ def generate_voice(text):
         "text": ssml_text,
         "voice_settings": {
             "stability": 0.4,
-            "similarity_boost": 0.9
+            "similarity_boost": 0.8
         },
         "model_id": "eleven_multilingual_v2",
         "text_type": "ssml",
     }
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream"
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream?optimize_streaming_latency=1"
     r = requests.post(url, headers=headers, json=payload)
 
     timestamp = int(time.time() * 1000)
