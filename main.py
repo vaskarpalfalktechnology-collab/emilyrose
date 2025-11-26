@@ -107,8 +107,40 @@ def incoming_call():
 @app.route("/stream-tts", methods=["GET"])
 def stream_tts():
     text = request.args.get("text", "Hello")
-    return generate_voice(text)  # Your generate_voice already streams
 
+    headers = {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    ssml_text = f"""
+    <speak>
+        <prosody rate="medium" pitch="+5%">
+            {text}
+        </prosody>
+    </speak>
+    """
+
+    payload = {
+        "text": ssml_text,
+        "voice_settings": {
+            "stability": 0.3,
+            "similarity_boost": 0.85
+        },
+        "model_id": "eleven_turbo_v2_5",
+        "optimize_streaming_latency": 4,
+        "text_type": "ssml",
+    }
+
+    def generate():
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream"
+        with requests.post(url, json=payload, headers=headers, stream=True) as r:
+            r.raise_for_status()
+            for chunk in r.iter_content(chunk_size=4096):
+                if chunk:
+                    yield chunk
+
+    return Response(generate(), mimetype="audio/mpeg")
 
 
 
