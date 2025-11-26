@@ -210,9 +210,11 @@ def generate_voice(text):
         "Content-Type": "application/json"
     }
     ssml_text = f"""
-    <speak>
-        <prosody rate="medium" pitch="+6%">
-            {text.replace('.', '. <break time="0.5s"/>').replace('?', '? <break time="0.6s"/>')}
+     <speak>
+        <prosody rate="medium" pitch="+5%">
+            {text.replace('.', '. <break time="0.5s"/>')
+                 .replace('?', '? <break time="0.6s"/>')
+                 .replace('!', '! <break time="0.5s"/>')}
         </prosody>
     </speak>
     """
@@ -220,7 +222,7 @@ def generate_voice(text):
     payload = {
         "text": ssml_text,
         "voice_settings": {
-            "stability": 0.4,
+            "stability": 0.3,
             "similarity_boost": 0.8
         },
         "model_id": "eleven_multilingual_v2",
