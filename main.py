@@ -57,11 +57,30 @@ def index():
 
 @app.route("/incoming-call", methods=["POST"])
 def incoming_call():
-    response = """
+    phone = request.values.get("From", "unknown")
+
+ 
+    history = load_history(phone)
+    user_name = None
+    for role, msg in history:
+        if role == "name":
+            user_name = msg
+            break
+
+  
+    if user_name:
+        text = f"Hey {user_name}, it’s Emily. How are you? It’s great to finally chat. How’s your day going?"
+    else:
+        text = "Hey, it’s Emily. How are you. It’s great to finally chat. How’s your day going?"
+
+  
+    audio_url = generate_voice(text)
+
+ 
+    response = f"""
     <Response>
-        <Gather input="speech" action="/voice" language="en-GB">
-            <Say>Hey love, it’s Emily. Talk to me.</Say>
-        </Gather>
+        <Play>{audio_url}</Play>
+        <Gather input="speech" action="/voice" language="en-GB"/>
     </Response>
     """
     return Response(response, mimetype="text/xml")
