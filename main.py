@@ -6,6 +6,7 @@ import psycopg2
 from psycopg2 import pool
 from groq import Groq
 from collections import defaultdict
+from urllib.parse import quote
 
 db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, os.getenv("DATABASE_URL"))
 def get_db():
@@ -76,37 +77,37 @@ VOICE_ID = os.getenv("VOICE_ID")
 def index():
     return "💬 Emily Rose AI Companion is running."
 
-
 @app.route("/incoming-call", methods=["POST"])
 def incoming_call():
     phone = request.values.get("From", "unknown")
 
- 
+    # Load from memory first
     history = load_history(phone)
-    user_name = None
-    for role, msg in history:
-        if role == "name":
-            user_name = msg
-            break
+    user_name = next((msg for role, msg in history if role == "name"), None)
 
-  
     if user_name:
         text = f"Hey {user_name}, it’s Emily. How are you? It’s great to finally chat. How’s your day going?"
     else:
-        text = "Hey, it’s Emily. How are you. It’s great to finally chat. How’s your day going?"
+        text = "Hey, it’s Emily. How are you? It’s great to finally chat. How’s your day going?"
 
-  
-    audio_url = generate_voice(text)
+    # Direct streaming endpoint (no file save, no delay)
+    play_url = f"{request.url_root.rstrip('/')}/stream-tts?text={quote(text)}"
 
- 
-    response = f"""
+    xml = f"""
     <Response>
-        <Play>{audio_url}</Play>
+        <Play>{play_url}</Play>
         <Gather input="speech" action="/voice" language="en-GB"/>
     </Response>
     """
-    return Response(response, mimetype="text/xml")
+    return Response(xml, mimetype="text/xml")
 
+
+
+
+@app.route("/stream-tts", methods=["GET"])
+def stream_tts():
+    text = request.args.get("text", "Hello")
+    return generate_voice(text)  # Your generate_voice already streams
 
 
 
