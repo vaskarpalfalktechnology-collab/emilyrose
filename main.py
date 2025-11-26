@@ -211,8 +211,8 @@ def generate_voice(text):
     }
     ssml_text = f"""
     <speak>
-        <prosody rate="medium" pitch="+4%">
-            {text.replace('.', '. <break time="0.4s"/>').replace('?', '? <break time="0.5s"/>')}
+        <prosody rate="medium" pitch="+6%">
+            {text.replace('.', '. <break time="0.5s"/>').replace('?', '? <break time="0.6s"/>')}
         </prosody>
     </speak>
     """
