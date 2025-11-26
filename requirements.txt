@@ -1,6 +1,9 @@
-Flask==3.0.3
+Flask
+fastapi
 requests
+uvicorn
 python-dotenv
 gunicorn
 psycopg2-binary
 groq
+
