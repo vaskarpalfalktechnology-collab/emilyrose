@@ -1,0 +1,15 @@
+services:
+- type: web
+  name: emily-http
+  env: python
+  buildCommand: "pip install -r requirements.txt"
+  startCommand: "gunicorn main:app -k gevent --bind 0.0.0.0:10000"
+
+- type: web
+  name: emily-stream
+  env: python
+  buildCommand: "pip install -r requirements.txt"
+  startCommand: "uvicorn rt_stream:app --host 0.0.0.0 --port 10001"
+  routes:
+    - src: /stream
+      dest: /
