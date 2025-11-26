@@ -154,11 +154,30 @@ def voice():
     if not user_text:
         return Response("<Response><Say>I didn't catch that. Try again.</Say></Response>", mimetype="text/xml")
 
+
+        # Try to get saved name
+    user_name = next((msg for role, msg in history if role == "name"), None)
+
+    # --- Detect name explicitly only ---
+    if not user_name:
+        detected_name = None
+        lower_text = user_text.lower()
+        if "my name is" in lower_text:
+            detected_name = user_text.split("my name is", 1)[1].strip().split(" ")[0]
+        elif "i am" in lower_text:
+            detected_name = user_text.split("i am", 1)[1].strip().split(" ")[0]
+
+        if detected_name:
+            save_message(phone, "name", detected_name)
+            user_name = detected_name
+
+    
+
     save_message(phone, "user", user_text)
 
     # Load last 8 lines
     history = load_history(phone)[-8:]
-    conversation = "\n".join([f"{r}: {m}" for r, m in history])
+    conversation = "\n".join([f"{role}: {msg}" for role, msg in history if role != "name"])
 
     # AI reply
     prompt = f"""
@@ -170,6 +189,10 @@ def voice():
     Give a short, warm, playful answer as Emily Rose.
     Keep it under 2 sentences.
     """
+    
+       if user_name:
+        prompt = f"Call the user by their name: {user_name}.\n" + prompt
+        
     reply = get_huggingface_response(prompt)
     save_message(phone, "assistant", reply)
 
