@@ -82,31 +82,17 @@ def index():
 def incoming_call():
     phone = request.values.get("From", "unknown")
 
- 
-    history = load_history(phone)
-    user_name = None
-    for role, msg in history:
-        if role == "name":
-            user_name = msg
-            break
-
-  
-    if user_name:
-        text = f"Hey {user_name}, it’s Emily. How are you? It’s great to finally chat. How’s your day going?"
-    else:
-        text = "Hey, it’s Emily. How are you. It’s great to finally chat. How’s your day going?"
-
-  
-    audio_url = generate_voice(text)
-
- 
     response = f"""
     <Response>
-        <Play>{audio_url}</Play>
-        <Gather input="speech" action="/voice" language="en-GB"/>
+        <Connect>
+            <Stream url="wss://emilyrose.onrender.com/stream">
+                <Parameter name="caller" value="{phone}" />
+            </Stream>
+        </Connect>
     </Response>
     """
     return Response(response, mimetype="text/xml")
+
 
 
 
