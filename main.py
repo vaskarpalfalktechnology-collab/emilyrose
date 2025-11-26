@@ -60,8 +60,9 @@ def load_history(phone):
 
 
 
+app = FastAPI()
 
-app = Flask(__name__)
+# app = Flask(__name__)
 from dotenv import load_dotenv
 load_dotenv()
 
