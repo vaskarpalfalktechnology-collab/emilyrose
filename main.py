@@ -190,7 +190,7 @@ def voice():
     Keep it under 2 sentences.
     """
     
-       if user_name:
+    if user_name:
         prompt = f"Call the user by their name: {user_name}.\n" + prompt
         
     reply = get_huggingface_response(prompt)
