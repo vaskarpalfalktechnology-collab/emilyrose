@@ -7,6 +7,7 @@ from psycopg2 import pool
 from groq import Groq
 from collections import defaultdict
 from urllib.parse import quote
+import re
 
 db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, os.getenv("DATABASE_URL"))
 def get_db():
@@ -145,7 +146,7 @@ def stream_tts():
     return Response(generate(), mimetype="audio/mpeg")
 
 
-
+# Voice input from Twilio
 @app.route("/voice", methods=["POST"])
 def voice():
     phone = request.values.get("From", "unknown")
@@ -154,25 +155,18 @@ def voice():
     if not user_text:
         return Response("<Response><Say>I didn't catch that. Try again.</Say></Response>", mimetype="text/xml")
 
-
-    
-    # --- Detect name ---
+    # -------------------------
+    # Safe name detection using regex
+    # -------------------------
     detected_name = None
-    if "my name is" in user_text.lower():
-        detected_name = user_text.split("my name is", 1)[1].strip().split(" ")[0]
-    elif "i am" in user_text.lower():
-        detected_name = user_text.split("i am", 1)[1].strip().split(" ")[0]
-
-    if detected_name:
+    match = re.search(r"(?:my name is|i am)\s+(\w+)", user_text, re.IGNORECASE)
+    if match:
+        detected_name = match.group(1)
         save_message(phone, "name", detected_name)
-
-    
 
     save_message(phone, "user", user_text)
 
-    # Load last 8 lines instead of 10 (faster)
     history = load_history(phone)[-8:]
-
     conversation = "\n".join([f"{r}: {m}" for r, m in history])
 
     prompt = f"""
@@ -188,7 +182,6 @@ def voice():
     reply = get_huggingface_response(prompt)
     save_message(phone, "assistant", reply)
 
-    # Faster ElevenLabs streaming
     audio_url = generate_voice(reply)
 
     response = f"""
@@ -199,7 +192,6 @@ def voice():
     """
 
     return Response(response, mimetype="text/xml")
-
 
 
 @app.route("/test", methods=["GET"])
