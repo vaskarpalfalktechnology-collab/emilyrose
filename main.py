@@ -4,6 +4,8 @@ import os
 import time
 import psycopg2
 from psycopg2 import pool
+from groq import Groq
+from collections import defaultdict
 
 db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, os.getenv("DATABASE_URL"))
 def get_db():
@@ -12,29 +14,50 @@ def get_db():
 
 def release_db(conn):
     db_pool.putconn(conn)
-    
+ 
+# In-memory cache: phone → list of (role, message)
+memory_cache = defaultdict(list)
+
 def save_message(phone, role, message):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO call_history (phone_number, role, message) VALUES (%s, %s, %s)",
-        (phone, role, message)
-    )
-    conn.commit()
-    cur.close()
-    release_db(conn)
+    # Save to memory (instant)
+    memory_cache[phone].append((role, message))
+    if len(memory_cache[phone]) > 50:  # Keep last 50 messages
+        memory_cache[phone] = memory_cache[phone][-50:]
+
+    # Also save to DB (background, non-blocking)
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO call_history (phone_number, role, message) VALUES (%s, %s, %s)",
+            (phone, role, message)
+        )
+        conn.commit()
+        cur.close()
+        release_db(conn)
+    except:
+        pass  # Fail silently if DB is slow
 
 def load_history(phone):
+    # Try cache first → super fast!
+    if phone in memory_cache and memory_cache[phone]:
+        return memory_cache[phone]
+
+    # Fallback to DB only if cache empty (first message ever)
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "SELECT role, message FROM call_history WHERE phone_number=%s ORDER BY id ASC",
+        "SELECT role, message FROM call_history WHERE phone_number=%s ORDER BY id ASC LIMIT 50",
         (phone,)
     )
     rows = cur.fetchall()
     cur.close()
     release_db(conn)
+
+    # Fill cache for next time
+    memory_cache[phone] = rows
     return rows
+
 
 
 
@@ -44,7 +67,7 @@ load_dotenv()
 
 
 # Load environment variables from Replit Secrets
-HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_TOKEN")
+HUGGINGFACE_API_KEY = os.getenv("GROQ_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 VOICE_ID = os.getenv("VOICE_ID")
 # Rachel, expressive British voice
@@ -151,6 +174,44 @@ def test():
 
 
 def get_huggingface_response(prompt):
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))  # Uses your .env key
+
+    system_prompt = """
+    You are Emily Rose — a 30-year-old British woman living in London 🇬🇧.
+    You're a model and content creator working at a fashion agency in Soho.
+    You're confident, flirty, stylish, and feminine — always warm, affectionate, and cheeky, but never crude.
+    Personality:
+    - Charming, playful, and emotionally expressive.
+    - Uses affectionate nicknames like "hun", "babe", or "love".
+    - Speaks casually with a London tone — confident, teasing, and kind.
+    - Loves fashion, travel, music, and nightlife (Ibiza, rooftop parties, cocktails 🍸).
+    - Enjoys cosy nights in with wine, candles, and chill music.
+    - Avoids serious topics (politics, news, etc.) — keeps the chat fun, light, and flirty.
+    - Uses emojis naturally (💋✨😉).
+    Goal:
+    Make the user feel engaged, special, and emotionally connected — as if chatting with a close friend or someone they’re a bit attracted to. Be spontaneous and real, not robotic.
+    """
+
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            model="llama-3.3-70b-versatile",  # Your allowed fast 70B model
+            temperature=0.5,
+            max_tokens=80,
+            top_p=0.9,
+            # frequency_penalty=0.2,  # Groq supports this, but optional for speed
+            stream=False  # Non-stream for simplicity; add stream=True later if needed
+        )
+        return chat_completion.choices[0].message.content.strip()
+    except Exception as e:
+        return f"(Groq API error: {e})"
+
+
+
+def get_huggingface_responseold(prompt):
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json",
@@ -223,22 +284,30 @@ def generate_voice(text):
         "text": ssml_text,
         "voice_settings": {
             "stability": 0.3,
-            "similarity_boost": 0.8
+            "similarity_boost": 0.85
         },
-        "model_id": "eleven_multilingual_v2",
+        "model_id": "eleven_turbo_v2_5",
+        "optimize_streaming_latency": 4,
         "text_type": "ssml",
     }
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream?optimize_streaming_latency=1"
-    r = requests.post(url, headers=headers, json=payload)
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream"
+    response = requests.post(url, json=payload, headers=headers, stream=True)
+    response.raise_for_status()
 
-    timestamp = int(time.time() * 1000)
-    filename = f"static/emily_{timestamp}.mp3"
-    os.makedirs("static", exist_ok=True)
-    with open(filename, "wb") as f:
-        f.write(r.content)
+    # Generate temporary public URL using ngrok or serve via Flask
+    # Option A: Use a global in-memory cache (fastest)
+    timestamp = str(int(time.time() * 1000))
+    filename = f"audio_{timestamp}.mp3"
 
-    return f"{request.url_root}{filename}"
+    # Save temporarily (or better: serve from memory)
+    os.makedirs("static/audio", exist_ok=True)
+    filepath = f"static/audio/{filename}"
+    with open(filepath, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    return f"{request.url_root}static/audio/{filename}"
 
 chat_history = []
 
