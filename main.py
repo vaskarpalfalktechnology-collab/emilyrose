@@ -112,7 +112,6 @@ def stream_tts():
 
 
 
-
 @app.route("/voice", methods=["POST"])
 def voice():
     phone = request.values.get("From", "unknown")
@@ -123,11 +122,11 @@ def voice():
 
     save_message(phone, "user", user_text)
 
-    # Load last 8 lines instead of 10 (faster)
+    # Load last 8 lines
     history = load_history(phone)[-8:]
-
     conversation = "\n".join([f"{r}: {m}" for r, m in history])
 
+    # AI reply
     prompt = f"""
     Conversation so far:
     {conversation}
@@ -137,22 +136,20 @@ def voice():
     Give a short, warm, playful answer as Emily Rose.
     Keep it under 2 sentences.
     """
-
     reply = get_huggingface_response(prompt)
     save_message(phone, "assistant", reply)
 
-    # Faster ElevenLabs streaming
-    audio_url = generate_voice(reply)
+    # ✅ Use streaming TTS (NO file save)
+    play_url = f"{request.url_root.rstrip('/')}/stream-tts?text={quote(reply)}"
 
-    response = f"""
+    xml = f"""
     <Response>
-        <Play>{audio_url}</Play>
-        <Gather input="speech" action="/voice" language="en-GB" />
+        <Play>{play_url}</Play>
+        <Gather input="speech" action="/voice" language="en-GB"/>
     </Response>
     """
 
-    return Response(response, mimetype="text/xml")
-
+    return Response(xml, mimetype="text/xml")
 
 
 
